@@ -32,6 +32,7 @@ target_sources(OrchPercMapper
     PRIVATE
         Source/OrchPercMapperProcessor.cpp
         Source/OrchPercMapperEditor.cpp
+        Source/OrchPercMapperPoolLogic.cpp
 )
 
 target_compile_definitions(OrchPercMapper
@@ -59,3 +60,17 @@ if (TARGET OrchPercMapper_VST3)
             JUCE_VST3_CAN_REPLACE_VST2=0
     )
 endif()
+
+# Developer-only verification target for the pure pool-allocator logic.
+# No JUCE dependency by design - plain console app, standard library only.
+add_executable(OrchPercMapperPoolLogicCheck
+    Tools/OrchPercMapperPoolLogicCheck.cpp
+    Source/OrchPercMapperPoolLogic.cpp
+)
+
+target_include_directories(OrchPercMapperPoolLogicCheck
+    PRIVATE
+        Source
+)
+
+target_compile_features(OrchPercMapperPoolLogicCheck PRIVATE cxx_std_17)
