@@ -34,6 +34,7 @@ target_sources(OrchPercMapper
         Source/OrchPercMapperEditor.cpp
         Source/OrchPercMapperPoolLogic.cpp
         Source/OrchPercMapperNoteLogic.cpp
+        Source/OrchPercMapperCcMap.cpp
 )
 
 target_compile_definitions(OrchPercMapper
@@ -88,3 +89,16 @@ target_include_directories(OrchPercMapperNoteLogicCheck
 )
 
 target_compile_features(OrchPercMapperNoteLogicCheck PRIVATE cxx_std_17)
+
+add_executable(OrchPercMapperCcMapCheck
+    Tools/OrchPercMapperCcMapCheck.cpp
+    Source/OrchPercMapperCcMap.cpp
+    Source/OrchPercMapperPoolLogic.cpp
+)
+
+target_include_directories(OrchPercMapperCcMapCheck
+    PRIVATE
+        Source
+)
+
+target_compile_features(OrchPercMapperCcMapCheck PRIVATE cxx_std_17)

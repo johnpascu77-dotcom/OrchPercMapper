@@ -1,19 +1,20 @@
 # OrchPercMapper — Design
 
 Date: 2026-09-08
-Status: **Phase 0 (skeleton) + both pure-logic pieces built and tested, not
-yet wired into processBlock.** Design fork in §5 resolved as **(B)**.
-`OrchPercMapperPoolLogic` (Layer-2 allocator, 21 assertions green) and
-`OrchPercMapperNoteLogic` (confirmed Iconica destination-note table, 40+
-assertions green) both exist as pure logic and are linked into the plugin
-target, but nothing in `OrchPercMapperProcessor::processBlock` calls either
-one yet — it is still pure MIDI pass-through pending the next phase (wiring
-processBlock, plus designing the note→pool-request bridge and the
-cross-instance CC-arbitration transport for Layer 2 - see §4/§6).
+Status: **Role/Arbiter architecture resolved and wired; NoteMapper role still
+pass-through.** `OrchPercMapperPoolLogic` (Layer-2 allocator, 21 assertions),
+`OrchPercMapperNoteLogic` (confirmed Iconica table, 40+ assertions), and
+`OrchPercMapperCcMap` (CC↔instrument mapping, 6 assertions) are all pure
+logic, tested, and now actually wired into `processBlock` for the new
+**Arbiter** role (§4/§7) — a `Role` APVTS parameter (Note Mapper / Arbiter,
+default Note Mapper) picks between plain pass-through and running the pool
+allocator for real. The cross-instance transport question that motivated
+this whole session (§4) turned out to need no custom IPC at all — see §7.
+NoteMapper role remains pure pass-through; the confirmed note-identity table
+isn't called from processBlock yet.
 Repo: `C:\AudioDev\Repos\OrchPercMapper` (public).
 GitHub `johnpascu77-dotcom/OrchPercMapper` — created and pushed.
 Plugin code: `Opmp`.
-Ohrp, Ocap, Omrg — something like `Opmp`).
 
 ## 1. Purpose
 
@@ -160,41 +161,128 @@ built) — only their gate CC does, for arbitration purposes:
 OrchConductor --CC (12 instruments)--> OrchPercMapper (pool arbiter) --arbitrated CC--> OrchGate x12 --> Instruments
 ```
 
-**Real open problem surfaced while building the pool logic (§6): this can't
-be "one plugin instance doing two jobs."** The 7 unpitched instruments each
-need their own OrchPercMapper instance on their own track (note mapping is
-inherently per-track, same as OrchNoteMapper today). But the pool allocator
-needs ONE shared view of all 12 instruments' state - a `PoolAllocator` living
-inside 7 separate, independent plugin instances can't see each other's
-requests. This needs either a single dedicated "arbiter" instance that all
-12 instruments' gate CCs route through (matching OrchConductor's own
-single-global-instance role), an OrchMerge-style Hub/Sender IPC link between
-instances, or something else - not yet decided. See §6.
+**Real problem surfaced while building the pool logic, now resolved (§7):**
+the 7 unpitched instruments each need their own OrchPercMapper instance on
+their own track (note mapping is inherently per-track, same as OrchNoteMapper
+today), but the pool allocator needs ONE shared view of all 12 instruments'
+state - a `PoolAllocator` living inside 7 separate, independent plugin
+instances can't see each other's requests. Initially this looked like it
+might need an OrchMerge-style Hub/Sender IPC link between instances; it
+doesn't - see §7 for why, and for the actual (much simpler) resolution: a
+`Role` parameter and one shared Arbiter instance using ordinary Bitwig
+routing, no custom transport at all.
 
 ## 5. Instrument-track-level questions (settled)
 
 - **Plugin type**: MIDI effect (`IS_MIDI_EFFECT TRUE`), matching
-  OrchNoteMapper/OrchHarp - built into the Phase 0 skeleton.
-- **Plugin short code**: `Opmp`, CMake/JUCE scaffolding built (mirrors
-  OrchHarp's CMakeLists.txt structure).
+  OrchNoteMapper/OrchHarp.
+- **Plugin short code**: `Opmp`.
 - GitHub repo created and pushed: `johnpascu77-dotcom/OrchPercMapper`.
 
-## 6. Not yet decided / not yet started
+## 6. Deliberately not yet solved by OrchMerge's Hub/Sender pattern
 
-- **The cross-instance pool-state problem from §4** - the biggest remaining
-  open question, and harder than anything solved so far. `PoolAllocator`
-  itself (Source/OrchPercMapperPoolLogic.h/.cpp) is transport-agnostic pure
-  logic; it doesn't yet know or care how its `setRequested()`/`advance()`
-  calls would actually reach it across plugin instances. Needs its own
-  dedicated design pass, likely modelled on OrchMerge's Hub/Sender pattern -
-  worth reading OrchMerge's known history first (Hub Margin timing, the
-  reopened stuck-note/phantom-note-on bug) before assuming that pattern
-  transfers cleanly.
+Before concluding §7, it's worth recording why that pattern - this
+ecosystem's own proven answer to "N tracks' MIDI needs to reach one place" -
+doesn't actually apply here, since it was the first instinct:
+
+OrchMerge needed a custom socket transport (`OrchMergeLink`, Sender/Hub
+roles, a ppq-aware emit buffer, careful note-off lifecycle tracking keyed by
+`(senderUid, channel, note)`) because its problem is **fundamentally a
+many-to-one, dense, timing-critical MERGE**: up to 25 tracks' overlapping
+note streams, at audio-block rate, where losing simultaneity or misrouting a
+note-off is a real musical correctness bug (see OrchMerge_Design.md §3-4,
+including a real, still-only-partially-resolved "phantom note-on from an
+idle Sender" bug and a "held notes never released" transport-stop bug found
+live). None of that applies here: the pool allocator's inputs are 12 sparse,
+low-frequency CC *state changes* (an instrument's eligibility flips on a
+preset/combi change, not every block), with no note-off lifecycle and no
+ppq-precision timing requirement at all. Reaching for the same heavyweight
+machinery for a much simpler problem would have imported all of OrchMerge's
+real hard-won complexity (and its still-open bugs) for no benefit.
+
+## 7. The actual resolution: a Role parameter + ordinary Bitwig routing
+
+**No custom IPC needed.** This rig already has a documented, *proven* pattern
+for exactly this shape of problem - one shared source's output needing to
+reach several downstream tracks merged with each track's own content -
+because it's the same problem OrchConductor's own CC output already solves
+today for every instrument. From `OrchConductor/Docs/OrchConductor_MC_Integration_And_Narrative_Scan_Design.md`
+§12 (real, live-tested Bitwig lessons, not speculation):
+
+> Note Receiver needs an empty second Note-FX layer - a lone Note Receiver
+> *replaces* the track input; add an empty Layer 2 and MPL notes + OC's CC
+> merge. This is the fan-out mechanism.
+>
+> Stale track taps... motivates a section MIDI-bus topology (3 bus tracks tap
+> OC, instrument tracks tap their bus).
+
+That is: Bitwig's **Note Receiver** device (in a second Note FX layer, so it
+merges with rather than replaces the track's own input) is the ecosystem's
+already-working answer to "many tracks need to read one shared source," and
+a **bus-track topology** (an intermediate track taps the shared source once;
+downstream tracks tap the bus instead of the source directly) is already the
+established pattern for inserting exactly this kind of intermediary. A
+Percussion Arbiter bus track is a direct extension of a pattern already in
+production, not a new idea.
+
+**Resolved design:**
+
+- `OrchPercMapperAudioProcessor::Role` (APVTS `AudioParameterChoice`,
+  "Note Mapper" / "Arbiter", **default Note Mapper** - same "the safe
+  default never binds a shared resource" convention as OrchMerge's own
+  Sender-default role param).
+- **One Arbiter instance**, on a new "Percussion Pool" bus track that taps
+  OrchConductor directly (Note Receiver + empty Layer 2, per the pattern
+  above). It owns the one `PoolAllocator` for all 12 non-Timpani percussion
+  instruments.
+- The 12 relevant OrchGate instances, and the 7 unpitched instruments'
+  NoteMapper-role tracks, re-point their own Note Receiver from OrchConductor
+  to the Percussion Pool bus track instead - same mechanism, one hop further
+  downstream. Every other instrument's routing (woodwinds, brass, strings,
+  Harp, Piano, Timpani) is untouched.
+- **CC↔instrument mapping** (`OrchPercMapperCcMap.h/.cpp`): the 5 mallets'
+  CCs are real and already live in OrchConductor (Glockenspiel 44, Xylophone
+  45, Marimba 46, Vibraphone 47, Tubular Bells 48). The 7 unpitched
+  instruments' CCs are a **proposal** (56-62), since OrchConductor's
+  percussion section doesn't have rows for them yet (separate, not-yet-done
+  work - extending that section from 6 to 13 rows, per §3). Hardcoded for
+  now, not a UI-adjustable parameter; a small code change if OrchConductor's
+  eventual real assignment differs.
+- **`processArbiterBlock`**: for each incoming CC matching one of the 12 pool
+  CCs, treat it as `PoolAllocator::setRequested()` and consume it (not
+  forwarded raw); everything else (every other CC, all notes) passes through
+  completely unchanged. Emits the arbitrated gate CC for all 12 instruments
+  **only on change**, not every block - a resend-on-every-tick CC stream
+  would be needless spam; OrchConductor itself only sends on an explicit
+  preset/combi change, and the Arbiter follows the same convention.
+  `PoolAllocator::advance()` runs every block regardless of CC input, so an
+  instrument waiting purely on hold-time expiry gets granted promptly rather
+  than only on the next incoming request.
+
+**Verified**: `OrchPercMapperCcMapCheck` (6 assertions: all 12 CCs unique,
+round-trip correctly, Timpani/unrelated CCs correctly excluded) and the full
+`OrchPercMapper_VST3` build, both green. The Arbiter's `processBlock` path
+itself doesn't yet have a JUCE-linked integration test (mirroring
+OrchConductor's own `ProcessorMidiRegressionCheck`) - worth adding once this
+is closer to a real Bitwig smoke test, but its only real logic
+(`PoolAllocator`, `CcMap`) is already covered in isolation, and the block
+routing around them is thin, mechanical composition.
+
+**Not yet done / next steps:**
+
+- Actually build the "Percussion Pool" bus track + Note Receiver rewiring in
+  Bitwig, and confirm the Arbiter's arbitrated CC actually reaches a real
+  OrchGate instance - this is real rig work, not code.
+- Extend OrchConductor's percussion section to 13 rows so the 7 unpitched
+  instruments' CCs (56-62) actually exist upstream (currently only proposed
+  in this repo's `CcMap`, not real anywhere yet).
+- Wire the NoteMapper role: read its own instrument's arbitrated gate CC
+  (via the same Note Receiver mechanism) and gate its notes accordingly, plus
+  actually call `OrchPercMapperNoteLogic`'s confirmed Iconica table instead
+  of passing notes through untouched.
 - Exact hold-time default value (`PoolConfig::minHoldBeats`, currently a
-  placeholder 4.0 beats) - not tuned against any real material yet.
+  placeholder 4.0 beats) - not tuned against any real material yet; not yet
+  a UI-adjustable parameter either.
 - Variant selection (Hit vs. Roll/alternate) based on the actual incoming
   performance - `getUnpitchedRollOrAlternateDestinationNote()` exists and is
-  tested, but nothing calls it; every incoming note currently would map to
-  the Hit variant only, once processBlock is wired up.
-- `processBlock` itself does nothing yet beyond pass-through - neither piece
-  of pure logic built so far is called from the real MIDI path.
+  tested, but nothing calls it yet.
