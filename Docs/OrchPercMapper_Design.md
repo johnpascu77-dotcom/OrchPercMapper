@@ -1,9 +1,11 @@
 # OrchPercMapper — Design
 
 Date: 2026-09-08
-Status: **Concept only — nothing built yet.** This doc captures the conceptual
-discussion that closed before any code; the open question in §5 needs an
-answer before Phase 1 scaffolding starts.
+Status: **Concept closed, Phase 1 not started.** This doc captures the
+conceptual discussion that closed before any code. The design fork in §5 is
+resolved: **(B)** — OrchPercMapper arbitrates all 12 non-Timpani percussion
+instruments' CC gates, in addition to mapping note identity for the 7
+unpitched ones.
 Repo: `C:\AudioDev\Repos\OrchPercMapper` (git initialised, no remote yet).
 GitHub `johnpascu77-dotcom/OrchPercMapper` (public, like the rest of the Orch
 family) — not yet created; ask before publishing.
@@ -111,49 +113,42 @@ Settled parameters (confirmed in discussion):
   per instrument pair if real use shows the single constant doesn't hold up.
   Not scoped further until it's actually in front of real material.
 
-## 4. Chain position (note path, unpitched instruments)
+## 4. Chain position — two signal paths, one plugin
+
+**Resolved (2026-09-08): (B).** OrchPercMapper has two distinct jobs wired
+through two different signal paths, because the note-identity mapping (§2)
+only ever sees the 7 unpitched instruments, but the player-pool allocator
+(§3) is scoped across all 12 non-Timpani instruments (mallets included) —
+option (A), scoping the pool to only the 7 unpitched instruments, would have
+left the 5 mallets ungated and not actually delivered "any of the 3-4 players
+can cover any of the 12 instruments."
+
+**Note path (7 unpitched instruments only)** — drop-in replacement for
+OrchNoteMapper's role, same slot:
 
 ```
-Shared motive/MIDI source → OrchNoteFilter → OrchPercMapper → OrchGate → Instrument
+Shared motive/MIDI source → OrchNoteFilter → OrchPercMapper (note map) → OrchGate → Instrument
 ```
 
-Same slot OrchNoteMapper occupies for every other instrument — this is a
-drop-in replacement for the note-identity step, not a new stage.
+**Control path (all 12 non-Timpani instruments)** — OrchPercMapper sits
+between OrchConductor and all 12 OrchGate instances (5 mallet + 7 unpitched)
+as a CC arbiter: it reads each instrument's Layer-1 eligibility CC coming
+from OrchConductor and re-emits an arbitrated, pool-respecting gate CC to
+each of the 12 OrchGates. The 5 mallet instruments' *notes* never pass
+through OrchPercMapper (they keep flowing through OrchNoteMapper as already
+built) — only their gate CC does, for arbitration purposes:
 
-## 5. Open question: where does Layer 2 actually sit?
+```
+OrchConductor --CC (12 instruments)--> OrchPercMapper (pool arbiter) --arbitrated CC--> OrchGate x12 --> Instruments
+```
 
-This is the one real design fork left, and it needs an answer before Phase 1
-starts, because it changes the plugin's I/O shape.
+Implication for Phase 1 scaffolding: this is not a single MIDI-in/MIDI-out
+effect like OrchNoteMapper/OrchHarp. It needs a note-stream I/O pair for the
+7 unpitched instruments' mapping *and* a CC-level pass-through/arbitration
+path that also reaches the 5 mallet instruments' OrchGate CCs — two jobs, not
+one, sharing the same plugin instance's internal pool state.
 
-The note-identity mapping (§2) only ever sees the 7 unpitched instruments'
-stream — the 5 pitched mallets keep flowing through OrchNoteMapper as already
-built. But the player-pool allocator (§3) is scoped across all **12**
-instruments (mallets included). OrchPercMapper can't arbitrate a pool that
-includes instruments whose notes never pass through it.
-
-Two ways to resolve this:
-
-- **(A) Split responsibilities.** OrchPercMapper only ever handles the 7
-  unpitched instruments — both mapping *and* their share of the pool. The 5
-  pitched mallets keep using OrchGate's plain per-instrument gate, ungated by
-  the shared pool. Simpler to build, but doesn't actually deliver "any of the
-  3-4 players can cover any of the 12 instruments" — mallets would be exempt
-  from the realism constraint the whole discussion was about.
-- **(B) OrchPercMapper arbitrates all 12 at the control-CC level.** It sits
-  between OrchConductor and all 12 OrchGate instances (5 mallet + 7 unpitched)
-  as a CC-only pass-through/arbiter — reading each instrument's Layer-1
-  eligibility CC and re-emitting an arbitrated, pool-respecting gate CC to
-  each of the 12 OrchGates — while separately still doing note-identity
-  mapping only for the 7 unpitched instruments in the note path. This
-  actually delivers the full 12-instrument pool but means the plugin has two
-  distinct jobs wired through two different signal paths (note stream for 7,
-  control CCs for 12), which is more surface area to build and reason about.
-
-(B) is the only one that matches what was actually asked for; (A) is the
-smaller build if the mallet instruments turning out ungated in practice isn't
-a real problem. Needs the user's call before Phase 1 scaffolding.
-
-## 6. Not yet decided / not yet started
+## 5. Not yet decided / not yet started
 
 - Plugin type (MIDI effect vs. instrument-with-MIDI-out) — likely MIDI effect,
   matching OrchNoteMapper/OrchHarp, but not confirmed.
