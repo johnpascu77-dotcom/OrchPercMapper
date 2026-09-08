@@ -1,15 +1,18 @@
 # OrchPercMapper — Design
 
 Date: 2026-09-08
-Status: **Concept closed, Phase 1 not started.** This doc captures the
-conceptual discussion that closed before any code. The design fork in §5 is
-resolved: **(B)** — OrchPercMapper arbitrates all 12 non-Timpani percussion
-instruments' CC gates, in addition to mapping note identity for the 7
-unpitched ones.
-Repo: `C:\AudioDev\Repos\OrchPercMapper` (git initialised, no remote yet).
-GitHub `johnpascu77-dotcom/OrchPercMapper` (public, like the rest of the Orch
-family) — not yet created; ask before publishing.
-Plugin code: TBD (3-4 letter code following the family convention — Ocpn,
+Status: **Phase 0 (skeleton) + both pure-logic pieces built and tested, not
+yet wired into processBlock.** Design fork in §5 resolved as **(B)**.
+`OrchPercMapperPoolLogic` (Layer-2 allocator, 21 assertions green) and
+`OrchPercMapperNoteLogic` (confirmed Iconica destination-note table, 40+
+assertions green) both exist as pure logic and are linked into the plugin
+target, but nothing in `OrchPercMapperProcessor::processBlock` calls either
+one yet — it is still pure MIDI pass-through pending the next phase (wiring
+processBlock, plus designing the note→pool-request bridge and the
+cross-instance CC-arbitration transport for Layer 2 - see §4/§6).
+Repo: `C:\AudioDev\Repos\OrchPercMapper` (public).
+GitHub `johnpascu77-dotcom/OrchPercMapper` — created and pushed.
+Plugin code: `Opmp`.
 Ohrp, Ocap, Omrg — something like `Opmp`).
 
 ## 1. Purpose
@@ -58,15 +61,30 @@ mechanism is already a fixed note→note lookup, which is exactly what this is.
 user supplied (Steinberg Iconica Sketch, "Percussion Map" keyswitch grid).
 This is an explicitly opinionated, single-library default — re-pointable by
 hand for any other sample library, not a claim of universal compatibility.
-Confirmed instrument coverage in that map (hit-type variants in parentheses):
+**Confirmed 2026-09-08** against a full screenshot of the real map, with the
+user confirming the octave-naming convention (Bitwig: C3 = MIDI 60). Exact
+destination notes, implemented in `OrchPercMapperNoteLogic.h/.cpp`
+(`getUnpitchedHitDestinationNote` / `getUnpitchedRollOrAlternateDestinationNote`),
+14 confirmed unique across all 7 instruments (verified by
+`OrchPercMapperNoteLogicCheck`):
 
-- Bass Drum → "Gran Cassa" (Roll, Hit)
-- Snare Drum → "Snare 1/2/3" (Hit, Roll — several distinct snare voices)
-- Cymbals → "Cymb 18"/20"" (Roll, Hit)
-- Piatti → "Piatti" (Hi/Med Hit, Large Hit)
-- Tam-Tam → "Tam Tam" (Hit, Roll)
-- Tambourine → "Tambourine" (Hit, Roll)
-- Triangle → "Triangle" (Hit, Mute)
+| Instrument | Hit (default) | Roll / alternate |
+|---|---|---|
+| Bass Drum | Gran Cassa Hit — B0 = **35** | Gran Cassa Roll — A#0 = **34** |
+| Snare Drum | Snare 1 Hit — C1 = **36** | Snare 1 Roll — C#1 = **37** |
+| Cymbals | Cymb 18" Hit — A#1 = **46** | Cymb 18" Roll — C2 = **48** |
+| Piatti | Piatti Med Hit — F#1 = **42** | Piatti Large Hit — G#1 = **44** (no Roll voice) |
+| Tam-Tam | Tam Tam Hit — D#2 = **51** | Tam Tam Roll — E2 = **52** |
+| Tambourine | Tambourine Hit — F2 = **53** | Tambourine Roll — F#2 = **54** |
+| Triangle | Triangle Hit — G2 = **55** | Triangle Roll — G#2 = **56** |
+
+Snare Drum (of 3 voices: 1/2/3) and Cymbals (of 2 sizes: 18"/20") each had
+more than one candidate in the map for "the" primary Hit; Snare 1 and 18"
+were picked as defaults — swap freely, they're just as re-pointable as
+everything else here. Only the Hit variant is wired into
+`getUnpitchedHitDestinationNote()` and used anywhere yet; the Roll/alternate
+note is recorded and tested but not yet consumed by any selection logic (see
+below).
 
 The map also carries auxiliary voices outside this project's 7-instrument
 scope (congas, bongos, wood blocks, bell tree, chimes, cowbell, vibraslap,
@@ -142,16 +160,41 @@ built) — only their gate CC does, for arbitration purposes:
 OrchConductor --CC (12 instruments)--> OrchPercMapper (pool arbiter) --arbitrated CC--> OrchGate x12 --> Instruments
 ```
 
-Implication for Phase 1 scaffolding: this is not a single MIDI-in/MIDI-out
-effect like OrchNoteMapper/OrchHarp. It needs a note-stream I/O pair for the
-7 unpitched instruments' mapping *and* a CC-level pass-through/arbitration
-path that also reaches the 5 mallet instruments' OrchGate CCs — two jobs, not
-one, sharing the same plugin instance's internal pool state.
+**Real open problem surfaced while building the pool logic (§6): this can't
+be "one plugin instance doing two jobs."** The 7 unpitched instruments each
+need their own OrchPercMapper instance on their own track (note mapping is
+inherently per-track, same as OrchNoteMapper today). But the pool allocator
+needs ONE shared view of all 12 instruments' state - a `PoolAllocator` living
+inside 7 separate, independent plugin instances can't see each other's
+requests. This needs either a single dedicated "arbiter" instance that all
+12 instruments' gate CCs route through (matching OrchConductor's own
+single-global-instance role), an OrchMerge-style Hub/Sender IPC link between
+instances, or something else - not yet decided. See §6.
 
-## 5. Not yet decided / not yet started
+## 5. Instrument-track-level questions (settled)
 
-- Plugin type (MIDI effect vs. instrument-with-MIDI-out) — likely MIDI effect,
-  matching OrchNoteMapper/OrchHarp, but not confirmed.
-- Exact hold-time default value.
-- Plugin short code (Opmp or similar) and CMake/JUCE scaffolding.
-- GitHub repo creation/publish — ask before making it public.
+- **Plugin type**: MIDI effect (`IS_MIDI_EFFECT TRUE`), matching
+  OrchNoteMapper/OrchHarp - built into the Phase 0 skeleton.
+- **Plugin short code**: `Opmp`, CMake/JUCE scaffolding built (mirrors
+  OrchHarp's CMakeLists.txt structure).
+- GitHub repo created and pushed: `johnpascu77-dotcom/OrchPercMapper`.
+
+## 6. Not yet decided / not yet started
+
+- **The cross-instance pool-state problem from §4** - the biggest remaining
+  open question, and harder than anything solved so far. `PoolAllocator`
+  itself (Source/OrchPercMapperPoolLogic.h/.cpp) is transport-agnostic pure
+  logic; it doesn't yet know or care how its `setRequested()`/`advance()`
+  calls would actually reach it across plugin instances. Needs its own
+  dedicated design pass, likely modelled on OrchMerge's Hub/Sender pattern -
+  worth reading OrchMerge's known history first (Hub Margin timing, the
+  reopened stuck-note/phantom-note-on bug) before assuming that pattern
+  transfers cleanly.
+- Exact hold-time default value (`PoolConfig::minHoldBeats`, currently a
+  placeholder 4.0 beats) - not tuned against any real material yet.
+- Variant selection (Hit vs. Roll/alternate) based on the actual incoming
+  performance - `getUnpitchedRollOrAlternateDestinationNote()` exists and is
+  tested, but nothing calls it; every incoming note currently would map to
+  the Hit variant only, once processBlock is wired up.
+- `processBlock` itself does nothing yet beyond pass-through - neither piece
+  of pure logic built so far is called from the real MIDI path.

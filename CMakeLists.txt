@@ -33,6 +33,7 @@ target_sources(OrchPercMapper
         Source/OrchPercMapperProcessor.cpp
         Source/OrchPercMapperEditor.cpp
         Source/OrchPercMapperPoolLogic.cpp
+        Source/OrchPercMapperNoteLogic.cpp
 )
 
 target_compile_definitions(OrchPercMapper
@@ -61,8 +62,8 @@ if (TARGET OrchPercMapper_VST3)
     )
 endif()
 
-# Developer-only verification target for the pure pool-allocator logic.
-# No JUCE dependency by design - plain console app, standard library only.
+# Developer-only verification targets for the pure logic. No JUCE dependency
+# by design - plain console apps, standard library only.
 add_executable(OrchPercMapperPoolLogicCheck
     Tools/OrchPercMapperPoolLogicCheck.cpp
     Source/OrchPercMapperPoolLogic.cpp
@@ -74,3 +75,16 @@ target_include_directories(OrchPercMapperPoolLogicCheck
 )
 
 target_compile_features(OrchPercMapperPoolLogicCheck PRIVATE cxx_std_17)
+
+add_executable(OrchPercMapperNoteLogicCheck
+    Tools/OrchPercMapperNoteLogicCheck.cpp
+    Source/OrchPercMapperNoteLogic.cpp
+    Source/OrchPercMapperPoolLogic.cpp
+)
+
+target_include_directories(OrchPercMapperNoteLogicCheck
+    PRIVATE
+        Source
+)
+
+target_compile_features(OrchPercMapperNoteLogicCheck PRIVATE cxx_std_17)
