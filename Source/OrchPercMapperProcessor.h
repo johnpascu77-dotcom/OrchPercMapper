@@ -4,25 +4,24 @@
 #include <JuceHeader.h>
 
 #include "OrchPercMapperCcMap.h"
+#include "OrchPercMapperNoteCollapseLogic.h"
 #include "OrchPercMapperPoolLogic.h"
 
 // See Docs/OrchPercMapper_Design.md for the full design.
 //
 // Two roles, one plugin (Design doc §4/§7):
 //   - NoteMapper (default): sits on one of the 7 unpitched-instrument
-//     tracks, in OrchNoteMapper's usual slot. Still pure pass-through as of
-//     this phase - the confirmed Iconica note-identity table
-//     (OrchPercMapperNoteLogic) exists and is tested, but nothing in
-//     processBlock calls it yet.
+//     tracks, in OrchNoteMapper's usual slot, one instance per instrument
+//     (its "Instrument" parameter picks which of the 7). Rewrites every
+//     incoming note's pitch onto that instrument's confirmed Iconica
+//     destination note (OrchPercMapperNoteLogic) - never gates
+//     participation itself, that stays OrchGate's job downstream, reading
+//     the Arbiter's arbitrated CC directly.
 //   - Arbiter: ONE shared instance sitting downstream of OrchConductor
 //     (a new percussion bus track, matching this rig's existing "N bus
 //     tracks tap OC, instrument tracks tap their bus" pattern - no custom
-//     IPC needed, see Design doc §4). Owns the one PoolAllocator for all 12
-//     non-Timpani percussion instruments: consumes their raw eligibility CC
-//     as a pool *request*, passes everything else through unchanged, and
-//     emits the arbitrated gate CC (sent only on change, not every block)
-//     for downstream OrchGate instances and the 7 NoteMapper-role instances
-//     to read via a Note Receiver.
+//     IPC needed, see Design doc §7). Owns the one PoolAllocator for all 12
+//     non-Timpani percussion instruments.
 class OrchPercMapperAudioProcessor final : public juce::AudioProcessor
 {
 public:
@@ -62,22 +61,32 @@ public:
     juce::AudioProcessorValueTreeState& getParameters() { return parameters; }
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
 
+    // The 7 unpitched instruments, in the order the "Instrument" choice
+    // parameter presents them (opmp::Instrument's own bassDrum..triangle
+    // order).
+    static juce::StringArray getUnpitchedInstrumentChoices();
+
     Role getRole() const noexcept;
+    opmp::Instrument getSelectedUnpitchedInstrument() const noexcept;
 
     // For the editor's status display.
     bool isPoolInstrumentActive (opmp::Instrument instrument) const noexcept;
     int getNumOccupiedPoolSlots() const noexcept;
+    int getNoteMapperHeldCount() const noexcept;
 
 private:
     void processArbiterBlock (juce::MidiBuffer& midiMessages, double currentBeats);
+    void processNoteMapperBlock (juce::MidiBuffer& midiMessages, bool hostIsPlaying);
 
     double readCurrentBeats() const;
+    bool readHostIsPlaying() const;
 
     juce::AudioProcessorValueTreeState parameters;
     juce::AudioParameterChoice* roleParameter = nullptr;
+    juce::AudioParameterChoice* instrumentParameter = nullptr;
 
     // Arbiter-role state. PoolConfig is currently a fixed default (see
-    // Design doc §6 - hold time isn't tuned against real material yet), not
+    // Design doc §7 - hold time isn't tuned against real material yet), not
     // a plugin parameter.
     opmp::PoolAllocator poolAllocator { opmp::PoolConfig {} };
 
@@ -85,6 +94,13 @@ private:
     // state at least once. Otherwise the last value actually sent, so a
     // resend only happens on change (not every block).
     std::array<int, opmp::numPoolInstruments> lastEmittedGateValues {};
+
+    // NoteMapper-role state: every incoming pitch collapses onto one
+    // destination note, so "is the destination currently sounding" is a
+    // hold count, not a plain per-pitch passthrough (see
+    // OrchPercMapperNoteCollapseLogic.h).
+    opmp::NoteHoldCollapser noteCollapser;
+    bool wasPlaying = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (OrchPercMapperAudioProcessor)
 };

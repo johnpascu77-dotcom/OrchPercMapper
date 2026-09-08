@@ -21,9 +21,12 @@ private:
 
     juce::ComboBox roleBox;
     juce::Label roleLabel { {}, "Role:" };
+    juce::ComboBox instrumentBox;
+    juce::Label instrumentLabel { {}, "Instrument:" };
     juce::Label statusLabel;
 
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> roleAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> instrumentAttachment;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (OrchPercMapperAudioProcessorEditor)
 };

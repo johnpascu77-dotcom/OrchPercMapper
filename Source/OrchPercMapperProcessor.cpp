@@ -1,9 +1,20 @@
 #include "OrchPercMapperProcessor.h"
 #include "OrchPercMapperEditor.h"
+#include "OrchPercMapperNoteLogic.h"
 
 namespace
 {
     constexpr const char* roleParameterId = "role";
+    constexpr const char* instrumentParameterId = "instrument";
+
+    // The 7 unpitched instruments, in opmp::Instrument's own bassDrum..
+    // triangle order - index 0 of this list is opmp::Instrument::bassDrum.
+    constexpr int firstUnpitchedInstrumentIndex = static_cast<int> (opmp::Instrument::bassDrum);
+}
+
+juce::StringArray OrchPercMapperAudioProcessor::getUnpitchedInstrumentChoices()
+{
+    return { "Bass Drum", "Snare Drum", "Cymbals", "Piatti", "Tam-Tam", "Tambourine", "Triangle" };
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout OrchPercMapperAudioProcessor::createParameterLayout()
@@ -20,6 +31,15 @@ juce::AudioProcessorValueTreeState::ParameterLayout OrchPercMapperAudioProcessor
         juce::StringArray { "Note Mapper", "Arbiter" },
         0));
 
+    // Only meaningful in NoteMapper role - which of the 7 unpitched
+    // instruments this instance represents, same "one instrument per
+    // instance" pattern as OrchNoteMapper's own Instrument Preset.
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (
+        juce::ParameterID { instrumentParameterId, 1 },
+        "Instrument",
+        OrchPercMapperAudioProcessor::getUnpitchedInstrumentChoices(),
+        0));
+
     return { params.begin(), params.end() };
 }
 
@@ -28,6 +48,7 @@ OrchPercMapperAudioProcessor::OrchPercMapperAudioProcessor()
       parameters (*this, nullptr, "OrchPercMapperState", createParameterLayout())
 {
     roleParameter = dynamic_cast<juce::AudioParameterChoice*> (parameters.getParameter (roleParameterId));
+    instrumentParameter = dynamic_cast<juce::AudioParameterChoice*> (parameters.getParameter (instrumentParameterId));
 
     lastEmittedGateValues.fill (-1);
 }
@@ -54,6 +75,12 @@ OrchPercMapperAudioProcessor::Role OrchPercMapperAudioProcessor::getRole() const
         : Role::noteMapper;
 }
 
+opmp::Instrument OrchPercMapperAudioProcessor::getSelectedUnpitchedInstrument() const noexcept
+{
+    const int index = instrumentParameter != nullptr ? instrumentParameter->getIndex() : 0;
+    return static_cast<opmp::Instrument> (firstUnpitchedInstrumentIndex + index);
+}
+
 double OrchPercMapperAudioProcessor::readCurrentBeats() const
 {
     if (auto* transport = const_cast<OrchPercMapperAudioProcessor*> (this)->getPlayHead())
@@ -66,6 +93,15 @@ double OrchPercMapperAudioProcessor::readCurrentBeats() const
     }
 
     return 0.0;
+}
+
+bool OrchPercMapperAudioProcessor::readHostIsPlaying() const
+{
+    if (auto* transport = const_cast<OrchPercMapperAudioProcessor*> (this)->getPlayHead())
+        if (const auto position = transport->getPosition())
+            return position->getIsPlaying();
+
+    return false;
 }
 
 void OrchPercMapperAudioProcessor::processArbiterBlock (juce::MidiBuffer& midiMessages, double currentBeats)
@@ -120,16 +156,73 @@ void OrchPercMapperAudioProcessor::processArbiterBlock (juce::MidiBuffer& midiMe
     midiMessages.swapWith (passthrough);
 }
 
+void OrchPercMapperAudioProcessor::processNoteMapperBlock (juce::MidiBuffer& midiMessages, bool hostIsPlaying)
+{
+    const int destinationNote = opmp::getUnpitchedHitDestinationNote (getSelectedUnpitchedInstrument());
+
+    // Should never happen (the Instrument parameter only ever offers the 7
+    // unpitched choices), but never emit an invalid note number if it does.
+    if (destinationNote < 0)
+    {
+        wasPlaying = hostIsPlaying;
+        return;
+    }
+
+    juce::MidiBuffer remapped;
+
+    for (const auto metadata : midiMessages)
+    {
+        const auto message = metadata.getMessage();
+
+        if (message.isNoteOn())
+        {
+            // Every incoming pitch collapses onto the one destination note -
+            // an overlapping second note-on shouldn't retrigger it (see
+            // OrchPercMapperNoteCollapseLogic.h).
+            if (noteCollapser.noteOn())
+                remapped.addEvent (
+                    juce::MidiMessage::noteOn (message.getChannel(), destinationNote, message.getVelocity()),
+                    metadata.samplePosition);
+
+            continue;
+        }
+
+        if (message.isNoteOff())
+        {
+            if (noteCollapser.noteOff())
+                remapped.addEvent (
+                    juce::MidiMessage::noteOff (message.getChannel(), destinationNote, message.getVelocity()),
+                    metadata.samplePosition);
+
+            continue;
+        }
+
+        // Anything else (CCs, etc.) passes through unchanged - this role
+        // only ever rewrites note-on/note-off pitch, participation gating
+        // is OrchGate's job downstream.
+        remapped.addEvent (message, metadata.samplePosition);
+    }
+
+    // Mirrors OrchMerge's own releaseAllHeld() fix for the same class of
+    // bug: a note still logically held at the exact instant the host stops
+    // could otherwise never see its eventual note-off, leaving the
+    // destination note stuck sounding into the next take.
+    if (wasPlaying && ! hostIsPlaying && noteCollapser.forceRelease())
+        remapped.addEvent (juce::MidiMessage::noteOff (1, destinationNote), 0);
+
+    wasPlaying = hostIsPlaying;
+
+    midiMessages.swapWith (remapped);
+}
+
 void OrchPercMapperAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
     buffer.clear();
 
     if (getRole() == Role::arbiter)
         processArbiterBlock (midiMessages, readCurrentBeats());
-
-    // NoteMapper role: still pure pass-through as of this phase. The
-    // confirmed Iconica note-identity table (OrchPercMapperNoteLogic) is
-    // built and tested but not yet wired here - see Design doc §6.
+    else
+        processNoteMapperBlock (midiMessages, readHostIsPlaying());
 }
 
 bool OrchPercMapperAudioProcessor::isPoolInstrumentActive (opmp::Instrument instrument) const noexcept
@@ -140,6 +233,11 @@ bool OrchPercMapperAudioProcessor::isPoolInstrumentActive (opmp::Instrument inst
 int OrchPercMapperAudioProcessor::getNumOccupiedPoolSlots() const noexcept
 {
     return poolAllocator.numOccupiedSlots();
+}
+
+int OrchPercMapperAudioProcessor::getNoteMapperHeldCount() const noexcept
+{
+    return noteCollapser.getHeldCount();
 }
 
 bool OrchPercMapperAudioProcessor::hasEditor() const

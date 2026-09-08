@@ -1,17 +1,16 @@
 # OrchPercMapper — Design
 
 Date: 2026-09-08
-Status: **Role/Arbiter architecture resolved and wired; NoteMapper role still
-pass-through.** `OrchPercMapperPoolLogic` (Layer-2 allocator, 21 assertions),
-`OrchPercMapperNoteLogic` (confirmed Iconica table, 40+ assertions), and
-`OrchPercMapperCcMap` (CC↔instrument mapping, 6 assertions) are all pure
-logic, tested, and now actually wired into `processBlock` for the new
-**Arbiter** role (§4/§7) — a `Role` APVTS parameter (Note Mapper / Arbiter,
-default Note Mapper) picks between plain pass-through and running the pool
-allocator for real. The cross-instance transport question that motivated
-this whole session (§4) turned out to need no custom IPC at all — see §7.
-NoteMapper role remains pure pass-through; the confirmed note-identity table
-isn't called from processBlock yet.
+Status: **Both roles now wired for real - nothing left in processBlock is
+pure pass-through.** `OrchPercMapperPoolLogic` (21 assertions),
+`OrchPercMapperNoteLogic` (40+ assertions), `OrchPercMapperCcMap` (6
+assertions), and the new `OrchPercMapperNoteCollapseLogic` (18 assertions)
+are all pure logic, tested, and wired into `processBlock`. The `Role`
+parameter (Note Mapper / Arbiter, default Note Mapper) picks between: the
+**Arbiter** running the pool allocator for real (§7), or **NoteMapper**
+rewriting every incoming note onto its instrument's confirmed Iconica
+destination key via a many-to-one hold-count collapse, gated by a new
+"Instrument" parameter (§8). Full VST3 build clean, no warnings.
 Repo: `C:\AudioDev\Repos\OrchPercMapper` (public).
 GitHub `johnpascu77-dotcom/OrchPercMapper` — created and pushed.
 Plugin code: `Opmp`.
@@ -268,21 +267,62 @@ is closer to a real Bitwig smoke test, but its only real logic
 (`PoolAllocator`, `CcMap`) is already covered in isolation, and the block
 routing around them is thin, mechanical composition.
 
-**Not yet done / next steps:**
+**Remaining rig work (not code):**
 
 - Actually build the "Percussion Pool" bus track + Note Receiver rewiring in
   Bitwig, and confirm the Arbiter's arbitrated CC actually reaches a real
-  OrchGate instance - this is real rig work, not code.
+  OrchGate instance.
 - Extend OrchConductor's percussion section to 13 rows so the 7 unpitched
   instruments' CCs (56-62) actually exist upstream (currently only proposed
   in this repo's `CcMap`, not real anywhere yet).
-- Wire the NoteMapper role: read its own instrument's arbitrated gate CC
-  (via the same Note Receiver mechanism) and gate its notes accordingly, plus
-  actually call `OrchPercMapperNoteLogic`'s confirmed Iconica table instead
-  of passing notes through untouched.
+
+## 8. NoteMapper role: wired
+
+One instance per unpitched-instrument track, same as OrchNoteMapper's own
+per-instrument pattern. A new **"Instrument"** APVTS choice parameter (the 7
+unpitched instruments, `OrchPercMapperAudioProcessor::getUnpitchedInstrumentChoices()`)
+picks which one this instance represents.
+
+**Deliberately does not gate participation itself.** The Arbiter's
+arbitrated CC for this instrument reaches its downstream OrchGate instance
+directly (via the same Note Receiver mechanism, §7) - OrchGate already owns
+every gating concern (hard gate, participation amount, safe note-off,
+keyswitch passthrough) for every instrument in this ecosystem, and
+duplicating any of that here would just be two sources of truth for the same
+decision. NoteMapper's only job is note *identity*.
+
+**The real new problem here: many incoming pitches collapse onto one
+destination note.** Every note this instance sees maps to the *same* fixed
+Iconica key (`OrchPercMapperNoteLogic::getUnpitchedHitDestinationNote()`),
+so a plain per-message note-on/note-off passthrough would be wrong: two
+overlapping incoming notes of different original pitches would incorrectly
+retrigger the destination, and a note-off for whichever one happens to
+release first would incorrectly cut off a still-sounding destination note
+while the other incoming note is still held. `OrchPercMapperNoteCollapseLogic.h`
+(`NoteHoldCollapser`, pure, header-only) tracks a hold count instead: a
+note-on only actually triggers the destination when the count goes 0→1, a
+note-off only actually releases it when the count returns to 0, and a stray
+unmatched note-off is safely ignored rather than going negative.
+
+Also carries the same "held notes never released" safety net OrchMerge
+needed for a related reason (its Sender/Hub transport-stop bug, §6): on the
+host's playing→stopped edge, force-release whatever's held and emit an
+explicit note-off, so a note truly held at the exact instant of Stop can't
+leave the destination stuck sounding into the next take.
+
+**Verified**: `OrchPercMapperNoteCollapseLogicCheck` (18 assertions - single
+note-on/off, overlapping notes not retriggering, a stray note-off never
+going negative, force-release with and without something actually held).
+Full VST3 build clean, no warnings.
+
+**Not yet done:**
+
 - Exact hold-time default value (`PoolConfig::minHoldBeats`, currently a
-  placeholder 4.0 beats) - not tuned against any real material yet; not yet
-  a UI-adjustable parameter either.
+  placeholder 4.0 beats, Arbiter role) - not tuned against any real material
+  yet; not yet a UI-adjustable parameter either.
 - Variant selection (Hit vs. Roll/alternate) based on the actual incoming
   performance - `getUnpitchedRollOrAlternateDestinationNote()` exists and is
-  tested, but nothing calls it yet.
+  tested, but nothing calls it yet; every note currently maps to the Hit
+  variant only.
+- No real Bitwig smoke test yet for either role - everything so far is
+  pure-logic-level and clean-build verification, not live-confirmed.

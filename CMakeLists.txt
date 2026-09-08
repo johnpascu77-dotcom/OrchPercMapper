@@ -36,6 +36,7 @@ target_sources(OrchPercMapper
         Source/OrchPercMapperNoteLogic.cpp
         Source/OrchPercMapperCcMap.cpp
 )
+# OrchPercMapperNoteCollapseLogic.h is header-only (no matching .cpp).
 
 target_compile_definitions(OrchPercMapper
     PUBLIC
@@ -102,3 +103,14 @@ target_include_directories(OrchPercMapperCcMapCheck
 )
 
 target_compile_features(OrchPercMapperCcMapCheck PRIVATE cxx_std_17)
+
+add_executable(OrchPercMapperNoteCollapseLogicCheck
+    Tools/OrchPercMapperNoteCollapseLogicCheck.cpp
+)
+
+target_include_directories(OrchPercMapperNoteCollapseLogicCheck
+    PRIVATE
+        Source
+)
+
+target_compile_features(OrchPercMapperNoteCollapseLogicCheck PRIVATE cxx_std_17)
