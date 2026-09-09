@@ -69,12 +69,24 @@ public:
     Role getRole() const noexcept;
     opmp::Instrument getSelectedUnpitchedInstrument() const noexcept;
 
-    // For the editor's status display.
-    bool isPoolInstrumentActive (opmp::Instrument instrument) const noexcept;
-    bool isPoolInstrumentRequested (opmp::Instrument instrument) const noexcept;
-    bool isPoolInstrumentWaiting (opmp::Instrument instrument) const noexcept;
-    int getLastEmittedGateValue (opmp::Instrument instrument) const noexcept;
-    int getNumOccupiedPoolSlots() const noexcept;
+    // A single consistent snapshot of all 12 pool instruments' state, taken
+    // atomically under a lock rather than read field-by-field. Reading
+    // isActive()/isWaiting()/getLastEmittedGateValue() etc. separately from
+    // the UI thread while processArbiterBlock() mutates the same state on
+    // the audio thread is a real torn-read risk (e.g. an instrument briefly
+    // showing neither active nor waiting despite being requested, which is
+    // otherwise impossible) - this is the only race-free way to read it.
+    struct ArbiterDiagnosticsSnapshot
+    {
+        std::array<bool, opmp::numPoolInstruments> requested {};
+        std::array<bool, opmp::numPoolInstruments> active {};
+        std::array<bool, opmp::numPoolInstruments> waiting {};
+        std::array<int, opmp::numPoolInstruments> lastSent {};
+        int occupiedSlots = 0;
+    };
+
+    ArbiterDiagnosticsSnapshot getArbiterDiagnosticsSnapshot() const;
+
     int getNoteMapperHeldCount() const noexcept;
 
 private:
@@ -97,6 +109,14 @@ private:
     // state at least once. Otherwise the last value actually sent, so a
     // resend only happens on change (not every block).
     std::array<int, opmp::numPoolInstruments> lastEmittedGateValues {};
+
+    // Published by processArbiterBlock() (audio thread) at the end of every
+    // block, under diagnosticsLock; read by the UI thread via
+    // getArbiterDiagnosticsSnapshot(). A juce::SpinLock is the standard
+    // idiom for this: the critical section is tiny (one struct copy) and
+    // almost never contended (the UI timer only reads at ~10Hz).
+    mutable juce::SpinLock diagnosticsLock;
+    ArbiterDiagnosticsSnapshot diagnosticsSnapshot;
 
     // NoteMapper-role state: every incoming pitch collapses onto one
     // destination note, so "is the destination currently sounding" is a

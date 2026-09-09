@@ -154,6 +154,28 @@ void OrchPercMapperAudioProcessor::processArbiterBlock (juce::MidiBuffer& midiMe
     }
 
     midiMessages.swapWith (passthrough);
+
+    // Publish a single consistent snapshot for the UI thread to read (see
+    // ArbiterDiagnosticsSnapshot) - every field captured together, under one
+    // lock, so the editor can never see a torn combination (e.g. an
+    // instrument that's requested but shows neither active nor waiting).
+    ArbiterDiagnosticsSnapshot snapshot;
+
+    for (int i = 0; i < opmp::numPoolInstruments; ++i)
+    {
+        const auto instrument = static_cast<opmp::Instrument> (i);
+        const auto index = static_cast<size_t> (i);
+
+        snapshot.requested[index] = poolAllocator.isRequested (instrument);
+        snapshot.active[index] = poolAllocator.isActive (instrument);
+        snapshot.waiting[index] = poolAllocator.isWaiting (instrument);
+        snapshot.lastSent[index] = lastEmittedGateValues[index];
+    }
+
+    snapshot.occupiedSlots = poolAllocator.numOccupiedSlots();
+
+    const juce::SpinLock::ScopedLockType lock (diagnosticsLock);
+    diagnosticsSnapshot = snapshot;
 }
 
 void OrchPercMapperAudioProcessor::processNoteMapperBlock (juce::MidiBuffer& midiMessages, bool hostIsPlaying)
@@ -225,30 +247,11 @@ void OrchPercMapperAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
         processNoteMapperBlock (midiMessages, readHostIsPlaying());
 }
 
-bool OrchPercMapperAudioProcessor::isPoolInstrumentActive (opmp::Instrument instrument) const noexcept
+OrchPercMapperAudioProcessor::ArbiterDiagnosticsSnapshot
+    OrchPercMapperAudioProcessor::getArbiterDiagnosticsSnapshot() const
 {
-    return poolAllocator.isActive (instrument);
-}
-
-bool OrchPercMapperAudioProcessor::isPoolInstrumentRequested (opmp::Instrument instrument) const noexcept
-{
-    return poolAllocator.isRequested (instrument);
-}
-
-bool OrchPercMapperAudioProcessor::isPoolInstrumentWaiting (opmp::Instrument instrument) const noexcept
-{
-    return poolAllocator.isWaiting (instrument);
-}
-
-int OrchPercMapperAudioProcessor::getLastEmittedGateValue (opmp::Instrument instrument) const noexcept
-{
-    const auto index = static_cast<size_t> (instrument);
-    return index < lastEmittedGateValues.size() ? lastEmittedGateValues[index] : -1;
-}
-
-int OrchPercMapperAudioProcessor::getNumOccupiedPoolSlots() const noexcept
-{
-    return poolAllocator.numOccupiedSlots();
+    const juce::SpinLock::ScopedLockType lock (diagnosticsLock);
+    return diagnosticsSnapshot;
 }
 
 int OrchPercMapperAudioProcessor::getNoteMapperHeldCount() const noexcept

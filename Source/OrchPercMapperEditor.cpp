@@ -64,8 +64,14 @@ void OrchPercMapperAudioProcessorEditor::updateStatus()
     {
         statusLabel.setFont (juce::FontOptions (juce::Font::getDefaultMonospacedFontName(), 12.0f, juce::Font::plain));
 
+        // Read every field from ONE snapshot taken atomically on the audio
+        // thread - never mix-and-match separate live calls here, that's
+        // exactly what produced torn, impossible-looking rows before
+        // (requested but neither active nor waiting).
+        const auto snapshot = audioProcessor.getArbiterDiagnosticsSnapshot();
+
         juce::String text;
-        text << "Arbiter: " << audioProcessor.getNumOccupiedPoolSlots()
+        text << "Arbiter: " << snapshot.occupiedSlots
              << " pool slot(s) occupied. Only one instance of this role should run at a time.\n\n";
         text << "Instrument      CC  req  active  waiting  last-sent\n";
 
@@ -73,17 +79,18 @@ void OrchPercMapperAudioProcessorEditor::updateStatus()
         {
             const auto instrument = static_cast<opmp::Instrument> (i);
             const int cc = opmp::getPoolGateCcNumber (instrument);
+            const auto index = static_cast<size_t> (i);
 
             juce::String name (allPoolInstrumentNames[i]);
             text << name.paddedRight (' ', 15)
                  << juce::String (cc).paddedLeft (' ', 3) << "  "
-                 << (audioProcessor.isPoolInstrumentRequested (instrument) ? "Y  " : ".  ")
+                 << (snapshot.requested[index] ? "Y  " : ".  ")
                  << "  "
-                 << (audioProcessor.isPoolInstrumentActive (instrument) ? "Y     " : ".     ")
+                 << (snapshot.active[index] ? "Y     " : ".     ")
                  << "  "
-                 << (audioProcessor.isPoolInstrumentWaiting (instrument) ? "Y      " : ".      ")
+                 << (snapshot.waiting[index] ? "Y      " : ".      ")
                  << "  "
-                 << juce::String (audioProcessor.getLastEmittedGateValue (instrument)) << "\n";
+                 << juce::String (snapshot.lastSent[index]) << "\n";
         }
 
         statusLabel.setText (text, juce::dontSendNotification);
