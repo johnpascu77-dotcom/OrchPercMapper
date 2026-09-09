@@ -199,30 +199,34 @@ ppq-precision timing requirement at all. Reaching for the same heavyweight
 machinery for a much simpler problem would have imported all of OrchMerge's
 real hard-won complexity (and its still-open bugs) for no benefit.
 
-## 7. The actual resolution: a Role parameter + ordinary Bitwig routing
+## 7. The actual resolution: a Role parameter + ordinary Bitwig track Input routing
 
-**No custom IPC needed.** This rig already has a documented, *proven* pattern
-for exactly this shape of problem - one shared source's output needing to
-reach several downstream tracks merged with each track's own content -
-because it's the same problem OrchConductor's own CC output already solves
-today for every instrument. From `OrchConductor/Docs/OrchConductor_MC_Integration_And_Narrative_Scan_Design.md`
-§12 (real, live-tested Bitwig lessons, not speculation):
+**No custom IPC needed, and no device-level rewiring either.** Confirmed
+against a real screenshot of this rig's actual Violin 1 chain (2026-09-09) -
+corrects an earlier draft of this section, which assumed the mechanism was
+Bitwig's **Note Receiver** device (a Note FX device, quoting
+`OrchConductor/Docs/OrchConductor_MC_Integration_And_Narrative_Scan_Design.md`
+§12's "Note Receiver needs an empty second Note-FX layer... MPL notes + OC's
+CC merge"). That device is real and live in this rig, but it turns out to be
+solving a *different* problem than the one relevant here: it's how a track
+pulls in MPL's *generated notes* as a second note source, for instruments
+whose notes come from an external MPL instance rather than local clips. It
+has nothing to do with how OrchConductor's CC reaches a track.
 
-> Note Receiver needs an empty second Note-FX layer - a lone Note Receiver
-> *replaces* the track input; add an empty Layer 2 and MPL notes + OC's CC
-> merge. This is the fan-out mechanism.
->
-> Stale track taps... motivates a section MIDI-bus topology (3 bus tracks tap
-> OC, instrument tracks tap their bus).
+**OrchConductor's CC arrives via the track's plain Input routing - the
+ordinary dropdown, no device involved at all.** The Note FX Layer's empty
+Layer 2 (alongside Layer 1's MPL Note Receiver) simply lets whatever arrives
+via that plain Input - OrchConductor's CC - pass through unchanged and merge
+with Layer 1's received MPL notes. For instruments whose notes come from
+local clips instead of MPL, there's no Note Receiver in the chain at all, but
+the same plain-Input mechanism still carries OrchConductor's CC either way.
 
-That is: Bitwig's **Note Receiver** device (in a second Note FX layer, so it
-merges with rather than replaces the track's own input) is the ecosystem's
-already-working answer to "many tracks need to read one shared source," and
-a **bus-track topology** (an intermediate track taps the shared source once;
-downstream tracks tap the bus instead of the source directly) is already the
-established pattern for inserting exactly this kind of intermediary. A
-Percussion Arbiter bus track is a direct extension of a pattern already in
-production, not a new idea.
+That means inserting the Arbiter needs nothing more than **the bus-track
+topology already documented elsewhere in this rig** (`OrchConductor_MC_Integration...`
+§12: "3 bus tracks tap OC, instrument tracks tap their bus") - a track's
+Input pointed at an intermediate track instead of OrchConductor directly.
+No Note Receiver device, no Note FX Layer, nothing to add to any existing
+track's device chain.
 
 **Resolved design:**
 
@@ -230,15 +234,17 @@ production, not a new idea.
   "Note Mapper" / "Arbiter", **default Note Mapper** - same "the safe
   default never binds a shared resource" convention as OrchMerge's own
   Sender-default role param).
-- **One Arbiter instance**, on a new "Percussion Pool" bus track that taps
-  OrchConductor directly (Note Receiver + empty Layer 2, per the pattern
-  above). It owns the one `PoolAllocator` for all 12 non-Timpani percussion
-  instruments.
-- The 12 relevant OrchGate instances, and the 7 unpitched instruments'
-  NoteMapper-role tracks, re-point their own Note Receiver from OrchConductor
-  to the Percussion Pool bus track instead - same mechanism, one hop further
-  downstream. Every other instrument's routing (woodwinds, brass, strings,
-  Harp, Piano, Timpani) is untouched.
+- **One Arbiter instance**, on a new "Percussion Pool" bus track whose plain
+  Input is set to OrchConductor. It owns the one `PoolAllocator` for all 12
+  non-Timpani percussion instruments.
+- For each of the 12 relevant instruments (5 mallets + the 7 unpitched
+  NoteMapper-role tracks): change **that track's plain Input** from
+  OrchConductor to the Percussion Pool bus track instead - one dropdown per
+  track, nothing else on that track's device chain touched (any existing
+  Note Receiver pulling in MPL notes is completely unaffected, since it was
+  never part of the CC path). Every other instrument's Input (woodwinds,
+  brass, strings, Harp, Piano, Timpani) stays pointed at OrchConductor
+  directly, untouched.
 - **CC↔instrument mapping** (`OrchPercMapperCcMap.h/.cpp`): the 5 mallets'
   CCs are real and already live in OrchConductor (Glockenspiel 44, Xylophone
   45, Marimba 46, Vibraphone 47, Tubular Bells 48). The 7 unpitched
@@ -269,9 +275,10 @@ routing around them is thin, mechanical composition.
 
 **Remaining rig work (not code):**
 
-- Actually build the "Percussion Pool" bus track + Note Receiver rewiring in
-  Bitwig, and confirm the Arbiter's arbitrated CC actually reaches a real
-  OrchGate instance.
+- Actually build the "Percussion Pool" bus track in Bitwig (Input =
+  OrchConductor, OrchPercMapper on it in Arbiter role), re-point the 12
+  relevant instrument tracks' plain Input to it, and confirm the Arbiter's
+  arbitrated CC actually reaches a real OrchGate instance.
 - Extend OrchConductor's percussion section to 13 rows so the 7 unpitched
   instruments' CCs (56-62) actually exist upstream (currently only proposed
   in this repo's `CcMap`, not real anywhere yet).
@@ -285,7 +292,7 @@ picks which one this instance represents.
 
 **Deliberately does not gate participation itself.** The Arbiter's
 arbitrated CC for this instrument reaches its downstream OrchGate instance
-directly (via the same Note Receiver mechanism, §7) - OrchGate already owns
+directly (via the same plain-Input routing mechanism, §7) - OrchGate already owns
 every gating concern (hard gate, participation amount, safe note-off,
 keyswitch passthrough) for every instrument in this ecosystem, and
 duplicating any of that here would just be two sources of truth for the same
