@@ -81,18 +81,16 @@ opmp::Instrument OrchPercMapperAudioProcessor::getSelectedUnpitchedInstrument() 
     return static_cast<opmp::Instrument> (firstUnpitchedInstrumentIndex + index);
 }
 
-double OrchPercMapperAudioProcessor::readCurrentBeats() const
+double OrchPercMapperAudioProcessor::readCurrentTimeSeconds() const
 {
-    if (auto* transport = const_cast<OrchPercMapperAudioProcessor*> (this)->getPlayHead())
-    {
-        if (const auto position = transport->getPosition())
-        {
-            if (const auto ppq = position->getPpqPosition())
-                return *ppq;
-        }
-    }
-
-    return 0.0;
+    // Deliberately real elapsed time, not the host's beat/ppq position - see
+    // PoolConfig::minHoldSeconds. A musical-beat clock freezes whenever the
+    // transport is stopped, which would make hold-time never elapse during
+    // transport-stopped UI testing (a real bug this fixed: three pool slots
+    // grabbed once during earlier testing stayed permanently held, since
+    // ppq position never advanced while clicking through presets with
+    // playback stopped).
+    return juce::Time::getMillisecondCounterHiRes() / 1000.0;
 }
 
 bool OrchPercMapperAudioProcessor::readHostIsPlaying() const
@@ -104,7 +102,7 @@ bool OrchPercMapperAudioProcessor::readHostIsPlaying() const
     return false;
 }
 
-void OrchPercMapperAudioProcessor::processArbiterBlock (juce::MidiBuffer& midiMessages, double currentBeats)
+void OrchPercMapperAudioProcessor::processArbiterBlock (juce::MidiBuffer& midiMessages, double currentTimeSeconds)
 {
     juce::MidiBuffer passthrough;
 
@@ -122,7 +120,7 @@ void OrchPercMapperAudioProcessor::processArbiterBlock (juce::MidiBuffer& midiMe
                 // request, not forwarded raw - the arbitrated value (below)
                 // is what actually reaches the downstream OrchGate/
                 // NoteMapper instances.
-                poolAllocator.setRequested (instrument, message.getControllerValue() > 0, currentBeats);
+                poolAllocator.setRequested (instrument, message.getControllerValue() > 0, currentTimeSeconds);
                 continue;
             }
         }
@@ -135,7 +133,7 @@ void OrchPercMapperAudioProcessor::processArbiterBlock (juce::MidiBuffer& midiMe
     // Re-evaluate hold-time expiry even when no CC arrived this block, so a
     // waiting instrument gets granted as soon as it's eligible, not only on
     // the next incoming request.
-    poolAllocator.advance (currentBeats);
+    poolAllocator.advance (currentTimeSeconds);
 
     // Emit the arbitrated gate CC only on change, not every block - a CC
     // stream should stay sparse, matching how OrchConductor itself only
@@ -242,7 +240,7 @@ void OrchPercMapperAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
     buffer.clear();
 
     if (getRole() == Role::arbiter)
-        processArbiterBlock (midiMessages, readCurrentBeats());
+        processArbiterBlock (midiMessages, readCurrentTimeSeconds());
     else
         processNoteMapperBlock (midiMessages, readHostIsPlaying());
 }

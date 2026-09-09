@@ -29,7 +29,7 @@ void testBasicGrant()
 {
     PoolConfig config;
     config.poolSize = 3;
-    config.minHoldBeats = 4.0;
+    config.minHoldSeconds = 4.0;
 
     PoolAllocator pool (config);
 
@@ -47,7 +47,7 @@ void testPoolFullMakesFourthWait()
 {
     PoolConfig config;
     config.poolSize = 3;
-    config.minHoldBeats = 4.0;
+    config.minHoldSeconds = 4.0;
 
     PoolAllocator pool (config);
 
@@ -65,7 +65,7 @@ void testHoldTimeBlocksImmediateReassignment()
 {
     PoolConfig config;
     config.poolSize = 1;
-    config.minHoldBeats = 4.0;
+    config.minHoldSeconds = 4.0;
 
     PoolAllocator pool (config);
 
@@ -91,7 +91,7 @@ void testStillWantedInstrumentIsNeverEvicted()
 {
     PoolConfig config;
     config.poolSize = 1;
-    config.minHoldBeats = 4.0;
+    config.minHoldSeconds = 4.0;
 
     PoolAllocator pool (config);
 
@@ -112,7 +112,7 @@ void testQuickReturnBeforeHoldExpiryKeepsSlot()
 {
     PoolConfig config;
     config.poolSize = 1;
-    config.minHoldBeats = 4.0;
+    config.minHoldSeconds = 4.0;
 
     PoolAllocator pool (config);
 
@@ -134,13 +134,13 @@ void testFirstRequesterWinsAFreeSlot()
     // the plugin will actually be driven, not an arbitrary tie-break.
     PoolConfig config;
     config.poolSize = 1;
-    config.minHoldBeats = 0.0;
+    config.minHoldSeconds = 0.0;
 
     PoolAllocator pool (config);
 
     pool.setRequested (Instrument::marimba, true, 0.0);
     pool.setRequested (Instrument::marimba, false, 0.0);
-    pool.advance (0.0); // minHoldBeats = 0, so the slot is free immediately
+    pool.advance (0.0); // minHoldSeconds = 0, so the slot is free immediately
 
     // triangle (higher enum index than tamTam) requests first and should
     // win the single free slot despite the enum ordering.
@@ -160,7 +160,7 @@ void testSimultaneousAdvanceFallsBackToEnumOrder()
     // (in Instrument enum order) is what decides it here.
     PoolConfig config;
     config.poolSize = 1;
-    config.minHoldBeats = 4.0;
+    config.minHoldSeconds = 4.0;
 
     PoolAllocator pool (config);
 

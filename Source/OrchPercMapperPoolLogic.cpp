@@ -21,7 +21,7 @@ int PoolAllocator::findSlotIndexFor (Instrument instrument) const noexcept
     return -1;
 }
 
-bool PoolAllocator::trySeatInstrument (Instrument instrument, double currentBeats)
+bool PoolAllocator::trySeatInstrument (Instrument instrument, double currentTimeSeconds)
 {
     for (int i = 0; i < config.poolSize; ++i)
     {
@@ -31,7 +31,7 @@ bool PoolAllocator::trySeatInstrument (Instrument instrument, double currentBeat
         {
             slot.occupied = true;
             slot.occupant = instrument;
-            slot.assignedAtBeats = currentBeats;
+            slot.assignedAtSeconds = currentTimeSeconds;
             return true;
         }
     }
@@ -39,7 +39,7 @@ bool PoolAllocator::trySeatInstrument (Instrument instrument, double currentBeat
     return false;
 }
 
-void PoolAllocator::settle (double currentBeats)
+void PoolAllocator::settle (double currentTimeSeconds)
 {
     // 1. Free any occupied slot whose occupant is no longer requested and
     //    whose minimum hold time has elapsed. A slot whose occupant is
@@ -52,7 +52,7 @@ void PoolAllocator::settle (double currentBeats)
 
         if (slot.occupied
             && ! requestedFlags[static_cast<size_t> (slot.occupant)]
-            && (currentBeats - slot.assignedAtBeats) >= config.minHoldBeats)
+            && (currentTimeSeconds - slot.assignedAtSeconds) >= config.minHoldSeconds)
         {
             slot.occupied = false;
         }
@@ -71,19 +71,19 @@ void PoolAllocator::settle (double currentBeats)
         if (findSlotIndexFor (instrument) >= 0)
             continue; // already seated
 
-        trySeatInstrument (instrument, currentBeats);
+        trySeatInstrument (instrument, currentTimeSeconds);
     }
 }
 
-void PoolAllocator::setRequested (Instrument instrument, bool requested, double currentBeats)
+void PoolAllocator::setRequested (Instrument instrument, bool requested, double currentTimeSeconds)
 {
     requestedFlags[static_cast<size_t> (instrument)] = requested;
-    settle (currentBeats);
+    settle (currentTimeSeconds);
 }
 
-void PoolAllocator::advance (double currentBeats)
+void PoolAllocator::advance (double currentTimeSeconds)
 {
-    settle (currentBeats);
+    settle (currentTimeSeconds);
 }
 
 bool PoolAllocator::isActive (Instrument instrument) const noexcept

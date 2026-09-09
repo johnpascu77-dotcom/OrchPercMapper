@@ -49,14 +49,25 @@ constexpr int maxPoolSize = 8; // generous fixed upper bound; real pools are 3-4
 
 struct PoolConfig
 {
-    int poolSize = 3;           // 3-4 real players sharing the 12 instruments
-    double minHoldBeats = 4.0;  // one default constant to start (see Design doc §3);
-                                // adjustable later per instrument pair if real use
-                                // shows a single constant doesn't hold up
+    int poolSize = 3;              // 3-4 real players sharing the 12 instruments
+
+    // Deliberately real elapsed seconds, not musical beats: a player's
+    // physical mallet-switch time is a real-world constraint, not a
+    // tempo-relative one - it takes the same real seconds whether the piece
+    // is Adagio or Presto. This also means hold-time keeps elapsing while
+    // the host transport is stopped, which musical-beat time would not (a
+    // real, confirmed bug in an earlier version of this class: with
+    // beat-based hold time, a slot grabbed once during transport-stopped UI
+    // testing could never be released, since the host's ppq position never
+    // advances while stopped).
+    double minHoldSeconds = 4.0;   // one default constant to start (see Design
+                                    // doc §3); adjustable later per instrument
+                                    // pair if real use shows a single constant
+                                    // doesn't hold up
 
     bool isValid() const noexcept
     {
-        return poolSize > 0 && poolSize <= maxPoolSize && minHoldBeats >= 0.0;
+        return poolSize > 0 && poolSize <= maxPoolSize && minHoldSeconds >= 0.0;
     }
 };
 
@@ -74,15 +85,16 @@ public:
     explicit PoolAllocator (PoolConfig configIn);
 
     // Call whenever an instrument's Layer-1 eligibility (the OrchConductor
-    // gate CC arbitrated here) changes state. currentBeats is the host's
-    // current beat position.
-    void setRequested (Instrument instrument, bool requested, double currentBeats);
+    // gate CC arbitrated here) changes state. currentTimeSeconds is real
+    // elapsed time (e.g. juce::Time::getMillisecondCounterHiRes() / 1000.0),
+    // NOT a musical beat position - see PoolConfig::minHoldSeconds.
+    void setRequested (Instrument instrument, bool requested, double currentTimeSeconds);
 
     // Re-evaluates hold-time expiry and pending requests without a
     // request-state change on any instrument, so a slot freed purely by the
     // passage of time gets handed to a waiting instrument promptly. Cheap;
     // safe to call every block.
-    void advance (double currentBeats);
+    void advance (double currentTimeSeconds);
 
     // True only while `instrument` is both currently requested and holding a
     // pool slot - this is what should drive the arbitrated gate CC sent
@@ -106,11 +118,11 @@ private:
     {
         bool occupied = false;
         Instrument occupant = Instrument::glockenspiel;
-        double assignedAtBeats = 0.0;
+        double assignedAtSeconds = 0.0;
     };
 
-    void settle (double currentBeats);
-    bool trySeatInstrument (Instrument instrument, double currentBeats);
+    void settle (double currentTimeSeconds);
+    bool trySeatInstrument (Instrument instrument, double currentTimeSeconds);
     int findSlotIndexFor (Instrument instrument) const noexcept;
 
     PoolConfig config;

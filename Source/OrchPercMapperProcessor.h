@@ -90,10 +90,10 @@ public:
     int getNoteMapperHeldCount() const noexcept;
 
 private:
-    void processArbiterBlock (juce::MidiBuffer& midiMessages, double currentBeats);
+    void processArbiterBlock (juce::MidiBuffer& midiMessages, double currentTimeSeconds);
     void processNoteMapperBlock (juce::MidiBuffer& midiMessages, bool hostIsPlaying);
 
-    double readCurrentBeats() const;
+    double readCurrentTimeSeconds() const;
     bool readHostIsPlaying() const;
 
     juce::AudioProcessorValueTreeState parameters;
