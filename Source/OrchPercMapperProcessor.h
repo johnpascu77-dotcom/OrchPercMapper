@@ -71,6 +71,9 @@ public:
 
     // For the editor's status display.
     bool isPoolInstrumentActive (opmp::Instrument instrument) const noexcept;
+    bool isPoolInstrumentRequested (opmp::Instrument instrument) const noexcept;
+    bool isPoolInstrumentWaiting (opmp::Instrument instrument) const noexcept;
+    int getLastEmittedGateValue (opmp::Instrument instrument) const noexcept;
     int getNumOccupiedPoolSlots() const noexcept;
     int getNoteMapperHeldCount() const noexcept;
 

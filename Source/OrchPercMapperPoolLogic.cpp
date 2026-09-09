@@ -98,6 +98,11 @@ bool PoolAllocator::isWaiting (Instrument instrument) const noexcept
         && findSlotIndexFor (instrument) < 0;
 }
 
+bool PoolAllocator::isRequested (Instrument instrument) const noexcept
+{
+    return requestedFlags[static_cast<size_t> (instrument)];
+}
+
 int PoolAllocator::numOccupiedSlots() const noexcept
 {
     int count = 0;

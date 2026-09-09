@@ -1,4 +1,15 @@
 #include "OrchPercMapperEditor.h"
+#include "OrchPercMapperCcMap.h"
+
+namespace
+{
+    // opmp::Instrument's own glockenspiel..triangle order.
+    const char* const allPoolInstrumentNames[opmp::numPoolInstruments] =
+    {
+        "Glockenspiel", "Xylophone", "Marimba", "Vibraphone", "Tubular Bells",
+        "Bass Drum", "Snare Drum", "Cymbals", "Piatti", "Tam-Tam", "Tambourine", "Triangle"
+    };
+}
 
 OrchPercMapperAudioProcessorEditor::OrchPercMapperAudioProcessorEditor (OrchPercMapperAudioProcessor& processor)
     : AudioProcessorEditor (&processor), audioProcessor (processor)
@@ -21,7 +32,7 @@ OrchPercMapperAudioProcessorEditor::OrchPercMapperAudioProcessorEditor (OrchPerc
     instrumentAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (
         audioProcessor.getParameters(), "instrument", instrumentBox);
 
-    statusLabel.setJustificationType (juce::Justification::centredLeft);
+    statusLabel.setJustificationType (juce::Justification::topLeft);
     statusLabel.setColour (juce::Label::textColourId, juce::Colour::fromRGB (200, 200, 200));
     statusLabel.setFont (juce::FontOptions (13.0f));
     addAndMakeVisible (statusLabel);
@@ -29,7 +40,7 @@ OrchPercMapperAudioProcessorEditor::OrchPercMapperAudioProcessorEditor (OrchPerc
     updateStatus();
     startTimerHz (10);
 
-    setSize (480, 160);
+    setSize (480, 420);
 }
 
 OrchPercMapperAudioProcessorEditor::~OrchPercMapperAudioProcessorEditor()
@@ -51,15 +62,36 @@ void OrchPercMapperAudioProcessorEditor::updateStatus()
 
     if (isArbiter)
     {
-        statusLabel.setText (
-            "Arbiter: " + juce::String (audioProcessor.getNumOccupiedPoolSlots())
-                + " pool slot(s) occupied. Sits downstream of OrchConductor on a "
-                  "percussion bus track (see Docs/OrchPercMapper_Design.md \xC2\xA7 7) - "
-                  "only one instance of this role should run at a time.",
-            juce::dontSendNotification);
+        statusLabel.setFont (juce::FontOptions (juce::Font::getDefaultMonospacedFontName(), 12.0f, juce::Font::plain));
+
+        juce::String text;
+        text << "Arbiter: " << audioProcessor.getNumOccupiedPoolSlots()
+             << " pool slot(s) occupied. Only one instance of this role should run at a time.\n\n";
+        text << "Instrument      CC  req  active  waiting  last-sent\n";
+
+        for (int i = 0; i < opmp::numPoolInstruments; ++i)
+        {
+            const auto instrument = static_cast<opmp::Instrument> (i);
+            const int cc = opmp::getPoolGateCcNumber (instrument);
+
+            juce::String name (allPoolInstrumentNames[i]);
+            text << name.paddedRight (' ', 15)
+                 << juce::String (cc).paddedLeft (' ', 3) << "  "
+                 << (audioProcessor.isPoolInstrumentRequested (instrument) ? "Y  " : ".  ")
+                 << "  "
+                 << (audioProcessor.isPoolInstrumentActive (instrument) ? "Y     " : ".     ")
+                 << "  "
+                 << (audioProcessor.isPoolInstrumentWaiting (instrument) ? "Y      " : ".      ")
+                 << "  "
+                 << juce::String (audioProcessor.getLastEmittedGateValue (instrument)) << "\n";
+        }
+
+        statusLabel.setText (text, juce::dontSendNotification);
     }
     else
     {
+        statusLabel.setFont (juce::FontOptions (13.0f));
+
         statusLabel.setText (
             "Note Mapper: remaps every incoming note to this instrument's Iconica "
             "destination key (held count: " + juce::String (audioProcessor.getNoteMapperHeldCount())

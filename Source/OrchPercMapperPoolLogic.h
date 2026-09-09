@@ -93,6 +93,12 @@ public:
     // slot (pool full, nothing eligible to free yet).
     bool isWaiting (Instrument instrument) const noexcept;
 
+    // The raw, most-recently-set request flag - independent of whether a
+    // slot was actually granted. Exposed for diagnostics (e.g. telling
+    // apart "never requested" from "requested but waiting" when something
+    // downstream looks stuck).
+    bool isRequested (Instrument instrument) const noexcept;
+
     int numOccupiedSlots() const noexcept;
 
 private:

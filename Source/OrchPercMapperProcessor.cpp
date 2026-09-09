@@ -230,6 +230,22 @@ bool OrchPercMapperAudioProcessor::isPoolInstrumentActive (opmp::Instrument inst
     return poolAllocator.isActive (instrument);
 }
 
+bool OrchPercMapperAudioProcessor::isPoolInstrumentRequested (opmp::Instrument instrument) const noexcept
+{
+    return poolAllocator.isRequested (instrument);
+}
+
+bool OrchPercMapperAudioProcessor::isPoolInstrumentWaiting (opmp::Instrument instrument) const noexcept
+{
+    return poolAllocator.isWaiting (instrument);
+}
+
+int OrchPercMapperAudioProcessor::getLastEmittedGateValue (opmp::Instrument instrument) const noexcept
+{
+    const auto index = static_cast<size_t> (instrument);
+    return index < lastEmittedGateValues.size() ? lastEmittedGateValues[index] : -1;
+}
+
 int OrchPercMapperAudioProcessor::getNumOccupiedPoolSlots() const noexcept
 {
     return poolAllocator.numOccupiedSlots();
