@@ -327,10 +327,18 @@ note-on/off, overlapping notes not retriggering, a stray note-off never
 going negative, force-release with and without something actually held).
 Full VST3 build clean, no warnings.
 
+**Fixed 2026-09-09, live-tested bug**: hold-time was originally measured in
+host beat/ppq position, which freezes whenever the transport is stopped - a
+slot grabbed once during transport-stopped UI testing could never be
+released. Also a real conceptual bug beyond testing: a player's physical
+mallet-switch time is a real-world constraint, not tempo-relative. Switched
+`PoolConfig::minHoldBeats` -> `minHoldSeconds`, fed by real elapsed time
+(`juce::Time::getMillisecondCounterHiRes()`) instead of host ppq.
+
 **Not yet done:**
 
-- Exact hold-time default value (`PoolConfig::minHoldBeats`, currently a
-  placeholder 4.0 beats, Arbiter role) - not tuned against any real material
+- Exact hold-time default value (`PoolConfig::minHoldSeconds`, currently a
+  placeholder 4.0 seconds, Arbiter role) - not tuned against any real material
   yet; not yet a UI-adjustable parameter either.
 - Variant selection (Hit vs. Roll/alternate) based on the actual incoming
   performance - `getUnpitchedRollOrAlternateDestinationNote()` exists and is
