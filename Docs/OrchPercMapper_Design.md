@@ -279,9 +279,14 @@ routing around them is thin, mechanical composition.
   OrchConductor, OrchPercMapper on it in Arbiter role), re-point the 12
   relevant instrument tracks' plain Input to it, and confirm the Arbiter's
   arbitrated CC actually reaches a real OrchGate instance.
-- Extend OrchConductor's percussion section to 13 rows so the 7 unpitched
-  instruments' CCs (56-62) actually exist upstream (currently only proposed
-  in this repo's `CcMap`, not real anywhere yet).
+
+**DONE 2026-09-09** (OrchConductor `51b0816`): percussion section extended
+6→13 rows, CC56-62 now real and match `OrchPercMapperCcMap` exactly. 9 new
+section presets added (7 individual "Xxx Only" + "Unpitched Percussion" +
+"Full Percussion"), mirroring how the mallets were tested one at a time.
+Factory combis (Full Orchestra etc.) still don't reference 56-62 - a
+separate, larger follow-up if wanted, not required to get these instruments
+testable.
 
 ## 8. NoteMapper role: wired
 
