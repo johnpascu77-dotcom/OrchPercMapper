@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OrchPercMapper — Reference</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;700;800&family=Work+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  :root{
+    --bg:#15120F; --surface:#1E1A15; --surface-2:#262019; --surface-3:#2E2620;
+    --border:#3A2F22; --border-soft:#2A2319;
+    --text:#EDE6D9; --text-dim:#A79B87; --text-faint:#6E6353;
+    --brass:#D8A94E; --brass-dim:#A67E38;
+    --note:#CB6E47; --note-dim:#8C4C31;
+    --control:#5C93B8; --control-dim:#3E6A85;
+    --sage:#84A672; --sage-dim:#5C7A4E;
+    --violet:#9488B0; --violet-dim:#665C7C;
+    color-scheme: dark;
+  }
+  *{ box-sizing:border-box; }
+  body{
+    background:var(--bg); color:var(--text); margin:0;
+    font-family:"Work Sans", ui-sans-serif, system-ui, sans-serif;
+    line-height:1.55; font-size:15px;
+    background-image: radial-gradient(1100px 480px at 10% -10%, color-mix(in srgb, var(--note) 9%, transparent), transparent 60%);
+  }
+  .wrap{ max-width:1080px; margin:0 auto; padding:36px 26px 70px; }
+  .mono{ font-family:"IBM Plex Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+  .crumbs{ font-family:"IBM Plex Mono"; font-size:.7rem; color:var(--text-faint); letter-spacing:.04em; margin-bottom:16px; }
+  .crumbs b{ color:var(--note); font-weight:500; }
+  .nameplate{ display:flex; align-items:flex-end; justify-content:space-between; gap:20px; flex-wrap:wrap;
+    padding-bottom:18px; margin-bottom:22px; border-bottom:2px solid var(--border); }
+  .nameplate h1{ font-family:"Big Shoulders Display"; font-weight:800; text-transform:uppercase;
+    font-size:clamp(2.1rem,5vw,3.2rem); line-height:.9; margin:0; letter-spacing:.005em; }
+  .nameplate .role{ color:var(--text-dim); font-size:.92rem; max-width:52ch; margin-top:8px; }
+  .badges{ display:flex; gap:8px; flex-wrap:wrap; }
+  .badge{ font-family:"IBM Plex Mono"; font-size:.66rem; text-transform:uppercase; letter-spacing:.06em;
+    padding:3px 9px; border-radius:20px; white-space:nowrap; }
+  .badge.chain{ color:var(--note); border:1px solid var(--note-dim); background:color-mix(in srgb, var(--note) 14%, transparent); }
+  .badge.live{ color:var(--sage); border:1px solid var(--sage-dim); background:color-mix(in srgb, var(--sage) 14%, transparent); }
+  .badge.plugin-code{ color:var(--text-faint); border:1px dashed var(--text-faint); }
+  .lede{ color:var(--text-dim); max-width:74ch; margin:0 0 34px; font-size:.98rem; }
+  .lede strong{ color:var(--text); font-weight:600; }
+  .section-head{ display:flex; align-items:baseline; gap:14px; margin:52px 0 18px; }
+  .section-head .num{ font-family:"IBM Plex Mono"; color:var(--text-faint); font-size:.82rem; }
+  .section-head h2{ font-family:"Big Shoulders Display"; font-weight:700; text-transform:uppercase; font-size:1.5rem; margin:0; }
+  .section-head .rule{ flex:1; height:1px; background:var(--border); }
+  .section-note{ color:var(--text-dim); max-width:76ch; margin:-6px 0 22px; font-size:.9rem; }
+  .layout{ display:grid; grid-template-columns: 380px 1fr; gap:28px; align-items:start; }
+  @media (max-width:800px){ .layout{ grid-template-columns:1fr; } }
+  .shot-frame{ position:relative; border:1px solid var(--border-soft); border-radius:8px; overflow:hidden;
+    background:#0C0A08; box-shadow: 0 14px 34px -16px rgba(0,0,0,.7); }
+  .shot-frame img{ display:block; width:100%; height:auto; }
+  .marker{ position:absolute; transform:translate(-50%,-50%); width:24px; height:24px; border-radius:50%;
+    background:var(--note); color:#1A0F08; border:2px solid #1A0F08; font-family:"IBM Plex Mono"; font-weight:600;
+    font-size:.74rem; display:flex; align-items:center; justify-content:center;
+    box-shadow:0 0 0 3px color-mix(in srgb, var(--note) 45%, transparent), 0 3px 10px rgba(0,0,0,.5); }
+  .shot-caption{ color:var(--text-faint); font-size:.76rem; margin-top:10px; }
+  .ctrl-list{ display:flex; flex-direction:column; }
+  .ctrl{ display:flex; gap:12px; padding:13px 0; border-bottom:1px solid var(--border-soft); }
+  .ctrl:last-child{ border-bottom:none; }
+  .ctrl .badge-num{ flex:none; width:24px; height:24px; border-radius:50%; background:var(--surface-2);
+    border:1px solid var(--note-dim); color:var(--note); font-family:"IBM Plex Mono"; font-weight:600;
+    font-size:.74rem; display:flex; align-items:center; justify-content:center; margin-top:2px; }
+  .ctrl .c-name{ font-weight:600; font-size:.9rem; }
+  .ctrl .c-id{ font-family:"IBM Plex Mono"; font-size:.66rem; color:var(--text-faint); margin-left:8px; }
+  .ctrl .c-choices{ font-family:"IBM Plex Mono"; font-size:.71rem; color:var(--brass); margin-top:4px; line-height:1.6; }
+  .ctrl .c-desc{ color:var(--text-dim); font-size:.82rem; margin-top:5px; line-height:1.5; }
+  .ctrl .c-default{ font-family:"IBM Plex Mono"; font-size:.66rem; color:var(--sage); margin-top:5px; }
+  .table-wrap{ overflow-x:auto; background:var(--surface); border:1px solid var(--border-soft); border-radius:8px; }
+  table{ width:100%; border-collapse:collapse; font-size:.82rem; }
+  th{ text-align:left; font-family:"IBM Plex Mono"; font-weight:500; font-size:.65rem; text-transform:uppercase;
+    letter-spacing:.08em; color:var(--text-faint); padding:10px 14px; border-bottom:1px solid var(--border); white-space:nowrap; }
+  td{ padding:9px 14px; border-bottom:1px solid var(--border-soft); vertical-align:top; }
+  tr:last-child td{ border-bottom:none; }
+  td.pid{ font-family:"IBM Plex Mono"; color:var(--brass); white-space:nowrap; }
+  td.range{ font-family:"IBM Plex Mono"; color:var(--text-faint); white-space:nowrap; font-size:.76rem; }
+  td.desc{ color:var(--text-dim); }
+  .readout-note{ display:flex; gap:14px; background:var(--surface); border:1px solid var(--border-soft); border-radius:8px;
+    padding:16px 18px; margin-top:8px; align-items:flex-start; }
+  .readout-note .dot{ flex:none; width:9px; height:9px; border-radius:50%; background:var(--sage); margin-top:6px; }
+  .readout-note p{ margin:0; color:var(--text-dim); font-size:.87rem; }
+  .readout-note code{ font-family:"IBM Plex Mono"; color:var(--sage); font-size:.82rem; }
+  .chain-strip{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-family:"IBM Plex Mono"; font-size:.76rem; margin-top:6px; }
+  .chain-strip .hop{ padding:5px 11px; border-radius:5px; background:var(--surface-2); border:1px solid var(--border-soft); color:var(--text-dim); }
+  .chain-strip .hop.here{ background:color-mix(in srgb, var(--note) 20%, var(--surface-2)); border-color:var(--note-dim); color:var(--note); font-weight:600; }
+  .chain-strip .arrow{ color:var(--text-faint); }
+  footer{ margin-top:60px; padding-top:20px; border-top:1px solid var(--border); color:var(--text-faint); font-size:.76rem;
+    display:flex; justify-content:space-between; flex-wrap:wrap; gap:10px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="crumbs">Orch System → Note Path (percussion) → <b>OrchPercMapper</b></div>
+
+  <div class="nameplate">
+    <div>
+      <h1>OrchPercMapper</h1>
+      <div class="role">One plugin, two roles — shares 3–4 real percussionists across 12 instruments, and fixes each hit to its real key.</div>
+    </div>
+    <div class="badges">
+      <span class="badge chain">note path · percussion only</span>
+      <span class="badge live">live</span>
+      <span class="badge plugin-code mono">Opmp</span>
+    </div>
+  </div>
+
+  <p class="lede">
+    OrchNoteMapper and OrchGate solve range-folding and per-instrument participation, but neither knows that a real
+    orchestra shares its percussion section — 3–4 players covering 12 instruments, not one dedicated player each.
+    OrchPercMapper adds that: one shared <strong>Arbiter</strong> instance pools participation with a real minimum
+    hold-time, and one <strong>Note Mapper</strong> instance per unpitched instrument fixes every incoming hit to
+    that instrument's real destination key.
+  </p>
+
+  <div class="section-head"><span class="num">01</span><h2>The Editor</h2><div class="rule"></div></div>
+  <p class="section-note">Only 2 real parameters — everything else about pool behavior (hold time, allocation) is fixed, deterministic logic, not something you dial in.</p>
+
+  <div class="layout">
+    <div class="shot-frame">
+      <img src="assets/orchpercmapper-editor.png" alt="OrchPercMapper editor, real screenshot, Note Mapper role, 3 numbered regions">
+      <div class="marker" style="left:28.6%; top:11.8%">1</div>
+      <div class="marker" style="left:34.9%; top:19.8%">2</div>
+      <div class="marker" style="left:49.8%; top:30.4%">3</div>
+    </div>
+    <div class="ctrl-list">
+      <div class="ctrl"><div class="badge-num">1</div><div><span class="c-name">Role</span><span class="c-id mono">role</span>
+        <div class="c-choices">Note Mapper · Arbiter</div>
+        <div class="c-desc">Defaults to Note Mapper — the safe choice, matching OrchMerge's own "just relay my own track" role convention, so a freshly dropped instance never accidentally binds the one shared Arbiter socket.</div>
+        <div class="c-default">default: Note Mapper</div></div></div>
+      <div class="ctrl"><div class="badge-num">2</div><div><span class="c-name">Instrument</span><span class="c-id mono">instrument</span>
+        <div class="c-choices">Bass Drum · Snare Drum · Cymbals · Piatti · Tam-Tam · Tambourine · Triangle</div>
+        <div class="c-desc">Only meaningful in Note Mapper role (disabled/greyed out in Arbiter role) — the 7 unpitched instruments, one per instance, same "one instrument per instance" pattern as OrchNoteMapper's own Instrument Preset. Mapping defaults to Iconica Sketch's own Percussion Map.</div>
+        <div class="c-default">default: Bass Drum</div></div></div>
+      <div class="ctrl"><div class="badge-num">3</div><div><span class="c-name">Status text</span>
+        <div class="c-desc">Note Mapper: shows the held-note count for this instrument's own many-to-one collapse. Arbiter: shows live pool occupancy across all 12 instruments — see §02.</div></div></div>
+    </div>
+  </div>
+  <div class="shot-caption">Real capture of the Standalone build, Note Mapper role, Bass Drum selected.</div>
+
+  <div class="section-head"><span class="num">02</span><h2>Arbiter Role</h2><div class="rule"></div></div>
+  <p class="section-note">
+    Switching Role to Arbiter replaces the status text with a live table: occupied pool slots and, per instrument,
+    its gate CC number. Only one Arbiter instance should run at a time — put it on its own "Percussion Pool" bus
+    track downstream of OrchConductor, the same Note Receiver + empty second Note-FX layer pattern already proven
+    for OrchConductor's own fan-out.
+  </p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Instrument</th><th>Gate CC</th><th>Family</th></tr></thead>
+      <tbody>
+        <tr><td class="desc">Glockenspiel</td><td class="pid">44</td><td class="range">pitched mallet</td></tr>
+        <tr><td class="desc">Xylophone</td><td class="pid">45</td><td class="range">pitched mallet</td></tr>
+        <tr><td class="desc">Marimba</td><td class="pid">46</td><td class="range">pitched mallet</td></tr>
+        <tr><td class="desc">Vibraphone</td><td class="pid">47</td><td class="range">pitched mallet</td></tr>
+        <tr><td class="desc">Tubular Bells</td><td class="pid">48</td><td class="range">pitched mallet</td></tr>
+        <tr><td class="desc">Bass Drum</td><td class="pid">56</td><td class="range">unpitched</td></tr>
+        <tr><td class="desc">Snare Drum</td><td class="pid">57</td><td class="range">unpitched</td></tr>
+        <tr><td class="desc">Cymbals</td><td class="pid">58</td><td class="range">unpitched</td></tr>
+        <tr><td class="desc">Piatti</td><td class="pid">59</td><td class="range">unpitched</td></tr>
+        <tr><td class="desc">Tam-Tam</td><td class="pid">60</td><td class="range">unpitched</td></tr>
+        <tr><td class="desc">Tambourine</td><td class="pid">61</td><td class="range">unpitched</td></tr>
+        <tr><td class="desc">Triangle</td><td class="pid">62</td><td class="range">unpitched</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="section-note" style="margin-top:14px">
+    All 12 (5 pitched mallets + 7 unpitched) share the same limited real-player pool — a full orchestra doesn't
+    give the mallets their own dedicated players either. Timpani is excluded by design; it has its own dedicated
+    player. The Arbiter arbitrates <em>participation</em> only; it does not gate itself — every instrument's own
+    downstream OrchGate reads the Arbiter's arbitrated CC directly, same as it would read OrchConductor's.
+  </p>
+
+  <div class="readout-note">
+    <div class="dot"></div>
+    <p><code>Arbiter: N pool slot(s) occupied</code> is the one line to watch — if it's stuck near the real player
+    count for your ensemble (3–4), the pool is working as a genuine shared resource, not silently over-allocating.</p>
+  </div>
+
+  <footer>
+    <span>Source: <span class="mono">Source/OrchPercMapperProcessor.cpp</span> + <span class="mono">OrchPercMapperCcMap.cpp</span> — regenerate this table if either changes.</span>
+    <span>OrchPercMapper · <span class="mono">johnpascu77-dotcom</span></span>
+  </footer>
+
+</div>
+</body>
+</html>

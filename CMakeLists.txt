@@ -10,7 +10,7 @@ juce_add_plugin(OrchPercMapper
     PLUGIN_MANUFACTURER_CODE Jpas
     PLUGIN_CODE Opmp
 
-    FORMATS VST3
+    FORMATS VST3 Standalone
 
     PRODUCT_NAME "OrchPercMapper"
     PLUGIN_NAME "OrchPercMapper"
